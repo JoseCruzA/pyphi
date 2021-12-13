@@ -519,7 +519,7 @@ def wedge_partitions(mechanism, purview, node_labels=None):
 
 
 @partition_types.register("ALL")
-def all_partitions(mechanism, purview, node_labels=None):
+def all_partitions(mechanism, purview, node_labels=None, partitionIndex=0, mechanism_partitions=[], mechanism_partition=None):
     """Return all possible partitions of a mechanism and purview.
 
     Partitions can consist of any number of parts.
@@ -527,33 +527,87 @@ def all_partitions(mechanism, purview, node_labels=None):
     Args:
         mechanism (tuple[int]): A mechanism.
         purview (tuple[int]): A purview.
-
+        node_labels (dict[int, str]): A mapping from node indices to node labels.
+        partitionIndex (int): The index of the partition to return.
+        mechanism_partitions (list[tuple[int]]): The mechanism partitions.
+        mechanism_partition (tuple[int]): The mechanism partition.
     Yields:
-        KPartition: A partition of this mechanism and purview into ``k`` parts.
+        from all_partitions: A partition of the mechanism and purview.
+        from n_purview_partitions: A partition of the purview.
     """
-    for mechanism_partition in partitions(mechanism):
-        mechanism_partition.append([])
-        n_mechanism_parts = len(mechanism_partition)
-        max_purview_partition = min(len(purview), n_mechanism_parts)
-        for n_purview_parts in range(1, max_purview_partition + 1):
-            n_empty = n_mechanism_parts - n_purview_parts
-            for purview_partition in k_partitions(purview, n_purview_parts):
-                purview_partition = [tuple(_list) for _list in purview_partition]
-                # Extend with empty tuples so purview partition has same size
-                # as mechanism purview
-                purview_partition.extend([()] * n_empty)
+    if partitionIndex == len(partitions(mechanism)):
+        return
 
-                # Unique permutations to avoid duplicates empties
-                for purview_permutation in set(permutations(purview_partition)):
+    if len(mechanism_partitions) == 0:
+        mechanism_partitions = partitions(mechanism)
 
-                    parts = [
-                        Part(tuple(m), tuple(p))
-                        for m, p in zip(mechanism_partition, purview_permutation)
-                    ]
+    mechanism_partition = mechanism_partitions[partitionIndex]
 
-                    # Must partition the mechanism, unless the purview is fully
-                    # cut away from the mechanism.
-                    if parts[0].mechanism == mechanism and parts[0].purview:
-                        continue
+    mechanism_partition.append([])
+    n_mechanism_parts = len(mechanism_partition)
+    max_purview_partition = min(len(purview), n_mechanism_parts)
 
-                    yield KPartition(*parts, node_labels=node_labels)
+    yield from all_partitions(mechanism, purview, node_labels, partitionIndex + 1, mechanism_partitions)
+    yield from n_purview_parts(mechanism, purview, node_labels, mechanism_partition, n_mechanism_parts ,max_purview_partition, 1)
+
+def n_purview_parts(mechanism, purview, node_labels, mechanism_partition, n_mechanism_parts, max_purview_partition, partitionIndex):
+    """
+        Get all possible partitions of the purview.
+
+        Args:
+            mechanism (tuple[int]): A mechanism.
+            purview (tuple[int]): A purview.
+            node_labels (dict[int, str]): A mapping from node indices to node labels.
+            mechanism_partition (tuple[int]): The mechanism partition.
+            n_mechanism_parts (int): The number of parts in the mechanism partition.
+            max_purview_partition (int): The maximum number of parts in the purview partition.
+            partitionIndex (int): The index of the partition to return.
+        Yields:
+            from n_purview_parts: Recursive for the number of partitions.
+            from purview_permutations: All possible permutations of the purview.
+    """
+    if partitionIndex == max_purview_partition + 1:
+        return
+    
+    n_empty = n_mechanism_parts - partitionIndex
+
+    yield from n_purview_parts(mechanism, purview, node_labels, mechanism_partition, n_mechanism_parts, max_purview_partition, partitionIndex + 1)
+
+    for purview_partition in k_partitions(purview, partitionIndex):
+        purview_partition = [tuple(_list) for _list in purview_partition]
+        # Extend with empty tuples so purview partition has same size
+        # as mechanism purview
+        purview_partition.extend([()] * n_empty)
+        
+        yield from purview_permutation(mechanism, mechanism_partition, set(permutations(purview_partition)), node_labels, 0)
+
+def purview_permutation(mechanism, mechanism_partition, purview_permutations, node_labels, partitionIndex):
+    """
+        Get all possible permutations of the purview.
+
+        Args:
+            mechanism (tuple[int]): A mechanism.
+            mechanism_partition (tuple[int]): The mechanism partition.
+            purview_permutations (set[tuple[int]]): The purview permutations.
+            node_labels (dict[int, str]): A mapping from node indices to node labels.
+            partitionIndex (int): The index of the partition to return.
+
+        Yields:
+            from purview_permutation: Recursive for the number of permutations.
+            KPartition: A partition of this mechanism and purview into ``k`` parts.
+    """
+    if partitionIndex == len(purview_permutations):
+        return
+
+    purview_permutation = purview_permutations[partitionIndex]
+
+    parts = [
+        Part(tuple(m), tuple(p))
+        for m, p in zip(mechanism_partition, purview_permutation)
+    ]
+
+    if parts[0].mechanism != mechanism and not parts[0].purview:
+        yield KPartition(*parts, node_labels=node_labels)
+
+    yield from purview_permutation(mechanism, mechanism_partition, purview_permutations, node_labels, partitionIndex + 1)
+
